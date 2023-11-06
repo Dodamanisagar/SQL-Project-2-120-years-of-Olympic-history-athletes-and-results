@@ -229,141 +229,7 @@ WITH T1 AS
     FROM T2
     WHERE RNK <= 5;
 
--- 14) List down total gold, silver and broze medals won by each country.
--- PIVOT
-/* In Postgresql, we can use crosstab function to create pivot table.
-crosstab function is part of a PostgreSQL extension called tablefunc.
-To call the crosstab function, you must first enable the tablefunc extension by executing the following SQL command:
-*/
-CREATE EXTENSION TABLEFUNC;
-
- SELECT COUNTRY
-    	, COALESCE(GOLD, 0) AS GOLD
-    	, COALESCE(SILVER, 0) AS SILVER
-    	, COALESCE(BRONZE, 0) AS BRONZE
-    FROM CROSSTAB('SELECT NR.REGION AS COUNTRY
-    			, MEDAL
-    			, COUNT(1) AS TOTAL_MEDALS
-    			FROM OLYMPICS_HISTORY OH
-    			JOIN NOC_REGIONS NR ON NR.NOC = OH.NOC
-    			WHERE MEDAL <> ''NA''
-    			GROUP BY NR.REGION,MEDAL
-    			ORDER BY NR.REGION,MEDAL',
-            'VALUES (''Bronze''), (''Gold''), (''Silver'')')
-    AS FINAL_RESULT(COUNTRY VARCHAR, BRONZE BIGINT, GOLD BIGINT, SILVER BIGINT)
-    ORDER BY GOLD DESC, SILVER DESC, BRONZE DESC;
-
-
--- 15) List down total gold, silver and broze medals won by each country corresponding to each olympic games.
-  SELECT SUBSTRING(GAMES,1,POSITION(' - ' IN GAMES) - 1) AS GAMES
-        , SUBSTRING(GAMES,POSITION(' - ' IN GAMES) + 3) AS COUNTRY
-        , COALESCE(GOLD, 0) AS GOLD
-        , COALESCE(SILVER, 0) AS SILVER
-        , COALESCE(BRONZE, 0) AS BRONZE
-    FROM CROSSTAB('SELECT CONCAT(GAMES, '' - '', NR.REGION) AS GAMES
-                , MEDAL
-                , COUNT(1) AS TOTAL_MEDALS
-                FROM OLYMPICS_HISTORY OH
-                JOIN NOC_REGIONS NR ON NR.NOC = OH.NOC
-                WHERE MEDAL <> ''NA''
-                GROUP BY GAMES,NR.REGION,MEDAL
-                ORDER BY GAMES,MEDAL',
-            'VALUES (''Bronze''), (''Gold''), (''Silver'')')
-    AS FINAL_RESULT(GAMES TEXT, BRONZE BIGINT, GOLD BIGINT, SILVER BIGINT);
-
-
-
--- 16) Identify which country won the most gold, most silver and most bronze medals in each olympic games.
- WITH TEMP AS
-    	(SELECT SUBSTRING(GAMES, 1, POSITION(' - ' IN GAMES) - 1) AS GAMES
-    	 	, SUBSTRING(GAMES, POSITION(' - ' IN GAMES) + 3) AS COUNTRY
-            , COALESCE(GOLD, 0) AS GOLD
-            , COALESCE(SILVER, 0) AS SILVER
-            , COALESCE(BRONZE, 0) AS BRONZE
-    	FROM CROSSTAB('SELECT CONCAT(GAMES, '' - '', NR.REGION) AS GAMES
-    					, MEDAL
-    				  	, COUNT(1) AS TOTAL_MEDALS
-    				  FROM OLYMPICS_HISTORY OH
-    				  JOIN NOC_REGIONS NR ON NR.NOC = OH.NOC
-    				  WHERE MEDAL <> ''NA''
-    				  GROUP BY GAMES,NR.REGION,MEDAL
-    				  ORDER BY GAMES,MEDAL',
-                  'VALUES (''Bronze''), (''Gold''), (''Silver'')')
-    			   AS FINAL_RESULT(GAMES TEXT, BRONZE BIGINT, GOLD BIGINT, SILVER BIGINT))
-    SELECT DISTINCT GAMES
-    	, CONCAT(FIRST_VALUE(COUNTRY) OVER(PARTITION BY GAMES ORDER BY GOLD DESC)
-    			, ' - '
-    			, FIRST_VALUE(GOLD) OVER(PARTITION BY GAMES ORDER BY GOLD DESC)) AS MAX_GOLD
-    	, CONCAT(FIRST_VALUE(COUNTRY) OVER(PARTITION BY GAMES ORDER BY SILVER DESC)
-    			, ' - '
-    			, FIRST_VALUE(SILVER) OVER(PARTITION BY GAMES ORDER BY SILVER DESC)) AS MAX_SILVER
-    	, CONCAT(FIRST_VALUE(COUNTRY) OVER(PARTITION BY GAMES ORDER BY BRONZE DESC)
-    			, ' - '
-    			, FIRST_VALUE(BRONZE) OVER(PARTITION BY GAMES ORDER BY BRONZE DESC)) AS MAX_BRONZE
-    FROM TEMP
-    ORDER BY GAMES;
-
-
-
-
--- 17) Identify which country won the most gold, most silver, most bronze medals and the most medals in each olympic games.
-   WITH TEMP AS
-    	(SELECT SUBSTRING(GAMES, 1, POSITION(' - ' IN GAMES) - 1) AS GAMES
-    		, SUBSTRING(GAMES, POSITION(' - ' IN GAMES) + 3) AS COUNTRY
-    		, COALESCE(GOLD, 0) AS GOLD
-    		, COALESCE(SILVER, 0) AS SILVER
-    		, COALESCE(BRONZE, 0) AS BRONZE
-    	FROM CROSSTAB('SELECT CONCAT(GAMES, '' - '', NR.REGION) AS GAMES
-    					, MEDAL
-    					, COUNT(1) AS TOTAL_MEDALS
-    				  FROM OLYMPICS_HISTORY OH
-    				  JOIN NOC_REGIONS NR ON NR.NOC = OH.NOC
-    				  WHERE MEDAL <> ''NA''
-    				  GROUP BY GAMES,NR.REGION,MEDAL
-    				  ORDER BY GAMES,MEDAL',
-                  'VALUES (''Bronze''), (''Gold''), (''Silver'')')
-    			   AS FINAL_RESULT(GAMES TEXT, BRONZE BIGINT, GOLD BIGINT, SILVER BIGINT)),
-    	TOT_MEDALS AS
-    		(SELECT GAMES, NR.REGION AS COUNTRY, COUNT(1) AS TOTAL_MEDALS
-    		FROM OLYMPICS_HISTORY OH
-    		JOIN OLYMPICS_HISTORY_NOC_REGIONS NR ON NR.NOC = OH.NOC
-    		WHERE MEDAL <> 'NA'
-    		GROUP BY GAMES,NR.REGION ORDER BY 1, 2)
-    SELECT DISTINCT T.GAMES
-    	, CONCAT(FIRST_VALUE(T.COUNTRY) OVER(PARTITION BY T.GAMES ORDER BY GOLD DESC)
-    			, ' - '
-    			, FIRST_VALUE(T.GOLD) OVER(PARTITION BY T.GAMES ORDER BY GOLD DESC)) AS MAX_GOLD
-    	, CONCAT(FIRST_VALUE(T.COUNTRY) OVER(PARTITION BY T.GAMES ORDER BY SILVER DESC)
-    			, ' - '
-    			, FIRST_VALUE(T.SILVER) OVER(PARTITION BY T.GAMES ORDER BY SILVER DESC)) AS MAX_SILVER
-    	, CONCAT(FIRST_VALUE(T.COUNTRY) OVER(PARTITION BY T.GAMES ORDER BY BRONZE DESC)
-    			, ' - '
-    			, FIRST_VALUE(T.BRONZE) OVER(PARTITION BY T.GAMES ORDER BY BRONZE DESC)) AS MAX_BRONZE
-    	, CONCAT(FIRST_VALUE(TM.COUNTRY) OVER (PARTITION BY TM.GAMES ORDER BY TOTAL_MEDALS DESC NULLS LAST)
-    			, ' - '
-    			, FIRST_VALUE(TM.TOTAL_MEDALS) OVER(PARTITION BY TM.GAMES ORDER BY TOTAL_MEDALS DESC NULLS LAST)) AS MAX_MEDALS
-    FROM TEMP T
-    JOIN TOT_MEDALS TM ON TM.GAMES = T.GAMES AND TM.COUNTRY = T.COUNTRY
-    ORDER BY GAMES;
-
-
--- 18) Which countries have never won gold medal but have won silver/bronze medals?
-    SELECT * FROM (
-    	SELECT COUNTRY, COALESCE(GOLD,0) AS GOLD, COALESCE(SILVER,0) AS SILVER, COALESCE(BRONZE,0) AS BRONZE
-    		FROM CROSSTAB('SELECT NR.REGION AS COUNTRY
-    					, MEDAL, COUNT(1) AS TOTAL_MEDALS
-    					FROM OLYMPICS_HISTORY OH
-    					JOIN NOC_REGIONS NR ON NR.NOC=OH.NOC
-    					WHERE MEDAL <> ''NA''
-    					GROUP BY NR.REGION,MEDAL ORDER BY NR.REGION,MEDAL',
-                    'VALUES (''Bronze''), (''Gold''), (''Silver'')')
-    		AS FINAL_RESULT(COUNTRY VARCHAR,
-    		BRONZE BIGINT, GOLD BIGINT, SILVER BIGINT)) X
-    WHERE GOLD = 0 AND (SILVER > 0 OR BRONZE > 0)
-    ORDER BY GOLD DESC NULLS LAST, SILVER DESC NULLS LAST, BRONZE DESC NULLS LAST;
-
-
--- 19) In which Sport/event, India has won highest medals.
+-- 14) In which Sport/event, India has won highest medals.
  WITH T1 AS
         	(SELECT SPORT, COUNT(1) AS TOTAL_MEDALS
         	FROM OLYMPICS_HISTORY
@@ -379,7 +245,7 @@ CREATE EXTENSION TABLEFUNC;
     WHERE RNK = 1;
 
 
--- 20) Break down all olympic games where india won medal for Hockey and how many medals in each olympic games.
+-- 15) Break down all olympic games where india won medal for Hockey and how many medals in each olympic games.
 SELECT TEAM, SPORT, GAMES, COUNT(1) AS TOTAL_MEDALS
     FROM OLYMPICS_HISTORY
     WHERE MEDAL <> 'NA'
