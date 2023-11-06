@@ -15,3 +15,9 @@ This project will teach you how to analyze the Olympic history database. You can
 * Excel
 * Postgre SQL
 * PgAdmin4
+
+## Schema :-
+
+
+
+![4-Schema](https://github.com/Dodamanisagar/SQL-Project-2-120-years-of-Olympic-history-athletes-and-results/assets/99800998/7faf13a7-fc28-4600-9bba-633dde4a6213)
